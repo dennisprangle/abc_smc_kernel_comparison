@@ -1,0 +1,15 @@
+python quadratic_example.py --proposal classic_ind --seed 1 --kernel ind_1_hit --save_history
+python quadratic_example.py --proposal mix --seed 1 --kernel ind_1_hit --save_history
+python quadratic_example.py --proposal flow --seed 1 --kernel ind_1_hit --save_history
+python quadratic_example.py --proposal classic_rw --seed 1 --kernel 1_hit --save_history
+python quadratic_example.py --proposal classic_ind --seed 1 --kernel 1_hit --save_history
+python quadratic_example.py --proposal mix --seed 1 --kernel 1_hit --save_history
+python quadratic_example.py --proposal flow --seed 1 --kernel 1_hit --save_history
+python quadratic_example.py --proposal classic_rw --seed 1 --kernel naive --save_history
+python quadratic_example.py --proposal classic_ind --seed 1 --kernel naive --save_history
+python quadratic_example.py --proposal mix --seed 1 --kernel naive --save_history
+python quadratic_example.py --proposal flow --seed 1 --kernel naive --save_history
+python quadratic_example.py --proposal classic_rw --seed 1 --kernel multi_r_hit --save_history
+python quadratic_example.py --proposal classic_ind --seed 1 --kernel multi_r_hit --save_history
+python quadratic_example.py --proposal mix --seed 1 --kernel multi_r_hit --save_history
+python quadratic_example.py --proposal flow --seed 1 --kernel multi_r_hit --save_history
