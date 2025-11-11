@@ -1,5 +1,4 @@
-This is code for the paper "A Comparison of Kernels for ABC-SMC" by Dennis Prangle, Cecilia Viscardi and Sammy Ragy.
-A link to the preprint will be added once it's available!
+This is code for the paper [A Comparison of Kernels for ABC-SMC](https://arxiv.org/abs/2511.06351) by Dennis Prangle, Cecilia Viscardi and Sammy Ragy.
 
 The `*example.py` files run individual experiments on different models.
 
