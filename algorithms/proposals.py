@@ -52,6 +52,34 @@ class ClassicRW(Proposal):
         return self.noise.log_prob(theta - theta_old)
 
 
+class DiagonalRW(Proposal):
+    """Gaussian random walk proposal with diagonal covariance
+
+    `sd` is a 1-D tensor of the standard deviations for each parameter
+    """
+    @torch.no_grad()
+    def __init__(self, sd):
+        sd = torch.as_tensor(sd, dtype=torch.float32)
+        self.noise = torch.distributions.Independent(
+            torch.distributions.Normal(loc=torch.zeros_like(sd), scale=sd),
+            1
+        )
+
+    @torch.no_grad()
+    def sample_and_log_prob(self, theta):
+        inc = self.noise.sample([1,])
+        log_prob = self.noise.log_prob(inc)
+        return theta + inc, log_prob
+
+    @torch.no_grad()
+    def log_prob(self, theta, theta_old=None):
+        if theta_old is None:
+            raise ValueError('Need to provide theta_old for random walk proposal. '
+                             'DiagonalRW cannot be used in kernels requiring an independence proposal, '
+                             'such as the independence one-hit kernel.')
+        return self.noise.log_prob(theta - theta_old)
+
+
 class ClassicInd(Proposal):
     """The classic independence proposal (as used in PMC ABC)"""
     @torch.no_grad()

@@ -6,7 +6,6 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import nflows
 from nflows.transforms import (
-    AffineCouplingTransform,
     MaskedPiecewiseRationalQuadraticAutoregressiveTransform,
     ReversePermutation,
     CompositeTransform
@@ -14,6 +13,8 @@ from nflows.transforms import (
 from nflows.nn.nets import ResidualNet
 from torch.nn.functional import softplus
 from algorithms.abc_smc import ABC_SMC
+# nflows 0.14's AffineCouplingTransform has no scale_activation argument, so use our version
+from algorithms.nflowsutils import AffineCouplingTransform
 from algorithms.utils import effective_sample_size
 from algorithms.proposals import ClassicInd, DefensiveProposal, FlowProposal
 
@@ -121,28 +122,29 @@ class TransportABC(ABC_SMC):
 
     def pretrain(self, check_ess_every=10, ess_target_fraction=0.9):
         """Train a transform targetting the prior"""
-        transform = self.init_transform()
-        self.flow_proposal = FlowProposal(transform, self.n_inputs)
-        optimizer = Adam(self.flow_proposal.flow.parameters(), lr=1e-4)
-        ess = 0.
-        while ess < self.batch_size * ess_target_fraction:
-            for i in range(check_ess_every):
-                if isinstance(self.prior, nflows.distributions.Distribution):
-                    batch = self.prior.sample(self.batch_size)
-                else: # The other expected case is a torch distribution
-                    batch = self.prior.sample([self.batch_size,])
-                loss = -self.flow_proposal.log_prob(batch).mean()
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+        with self.training_timer():
+            transform = self.init_transform()
+            self.flow_proposal = FlowProposal(transform, self.n_inputs)
+            optimizer = Adam(self.flow_proposal.flow.parameters(), lr=1e-4)
+            ess = 0.
+            while ess < self.batch_size * ess_target_fraction:
+                for i in range(check_ess_every):
+                    if isinstance(self.prior, nflows.distributions.Distribution):
+                        batch = self.prior.sample(self.batch_size)
+                    else: # The other expected case is a torch distribution
+                        batch = self.prior.sample([self.batch_size,])
+                    loss = -self.flow_proposal.log_prob(batch).mean()
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
 
-            params = self.flow_proposal.flow.sample(self.batch_size).detach()
-            logw = self.prior.log_prob(params).squeeze()
-            # squeeze on prev line ensures desired shape in one-dimensional parameters case
-            logw -= self.flow_proposal.log_prob(params)
-            ess = effective_sample_size(logw, log_input=True)
-            print(f'Pretraining ESS is {ess:.1f}', end='\r')
-        print('\n', end='')
+                params = self.flow_proposal.flow.sample(self.batch_size).detach()
+                logw = self.prior.log_prob(params).squeeze()
+                # squeeze on prev line ensures desired shape in one-dimensional parameters case
+                logw -= self.flow_proposal.log_prob(params)
+                ess = effective_sample_size(logw, log_input=True)
+                print(f'Pretraining ESS is {ess:.1f}', end='\r')
+            print('\n', end='')
         return None
 
     def loss(self, proposal, pars, weights):
@@ -164,19 +166,21 @@ class TransportABC(ABC_SMC):
         print(f'New epsilon is {self.epsilon:.2e}')
         for p in self.particles.values():
             p.reweight(self.epsilon)
-        flow_test_loss = self.learn_transform()
+        with self.training_timer():
+            flow_test_loss = self.learn_transform()
         self.kernel.proposal = self.flow_proposal
         self.kernel.epsilon = self.epsilon
         if self.enable_fallback:
-            self.classic_proposal = ClassicInd(
-                self.particles['train'],
-                use_weights = (self.train_target == 'current')
-            )
-            classic_test_loss = self.loss(
-                self.classic_proposal,
-                self.particles['test'].values,
-                self.particles['test'].weights,
-            )
+            with self.training_timer():
+                self.classic_proposal = ClassicInd(
+                    self.particles['train'],
+                    use_weights = (self.train_target == 'current')
+                )
+                classic_test_loss = self.loss(
+                    self.classic_proposal,
+                    self.particles['test'].values,
+                    self.particles['test'].weights,
+                )
             if flow_test_loss > classic_test_loss:
                 print('Falling back to classic ABC proposal!')
                 self.nr_fallback +=1
@@ -193,18 +197,19 @@ class TransportABC(ABC_SMC):
             p.resample(method='systematic', u=u) # Resample
         mcmc_updates, acc_count = self.make_mcmc_moves() # Updates self.particles
         self.iteration += 1
-        self.elapsed_time = time() - self.start_time
+        elapsed_time = self.elapsed_time
         new_history = {
             'iteration': self.iteration,
             'epsilon': self.epsilon,
-            'time': self.elapsed_time,
+            'time': elapsed_time,
+            'training_proportion': self.training_time / elapsed_time,
             'unique_count_train': self.particles['train'].unique_count(),
             'mcmc_acceptances': acc_count,
             'nr fallbacks': self.nr_fallback
         }
         self.history_list.append(new_history)
         self._history_cached = False
-        print(f'End of iteration, elapsed time (mins) {self.elapsed_time/60.:.1f}')
+        print(f'End of iteration, elapsed time (mins) {elapsed_time/60.:.1f}')
         print(f'Sims this iteration {self.total_sims - old_total_sims:d}')
         print(f'MCMC acceptances {acc_count:d} / {mcmc_updates:d}')
 

@@ -1,5 +1,10 @@
+import os
+import tempfile
+from os.path import exists
+from pathlib import Path
 import torch
 import numpy as np
+import pandas as pd
 from scipy.stats import norm
 import ot
 
@@ -142,3 +147,22 @@ class Particles:
         if alive.sum() == 0:
             return 0
         return torch.unique(self.values[alive,:], dim=0).shape[0]
+
+def save_summary(summary, results_dir=None):
+    """Save `summary` (a dict of results from one run) as a row of a csv file
+
+    If `results_dir` is None, the row is appended to results/results.csv.
+    Otherwise it is saved to a new uniquely named file in `results_dir`,
+    so that runs in parallel don't write to the same file.
+    """
+    df = pd.DataFrame.from_dict([summary]) # See https://stackoverflow.com/a/63972829
+    if results_dir is None:
+        Path('results').mkdir(exist_ok=True)
+        output_path='results/results.csv'
+        df.to_csv(output_path, mode='a', header=not exists(output_path))
+    else:
+        Path(results_dir).mkdir(parents=True, exist_ok=True)
+        prefix = f"{summary['model']}_{summary['proposal']}_{summary['kernel']}_seed{summary['seed']}_"
+        fd, output_path = tempfile.mkstemp(suffix='.csv', prefix=prefix, dir=results_dir)
+        with os.fdopen(fd, 'w') as f:
+            df.to_csv(f, index=False)

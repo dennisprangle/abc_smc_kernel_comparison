@@ -28,93 +28,88 @@ print(tex_table)
 
 #Tests
 from scipy.stats import ttest_rel
+from analysis_utils import paired_by_seed
 
 res_main = pd.read_csv('results.csv')
 res_main = res_main[res_main['proposal'] == 'mix']
 
 for model in res_main['model'].unique():
     for kernel in res_main['kernel'].unique():
-        def_vals = res_def[(res_def['model'] == model) & (res_def['kernel'] == kernel)]['final_epsilon']
-        main_vals = res_main[(res_main['model'] == model) & (res_main['kernel'] == kernel)]['final_epsilon']
+        def_subset = res_def[(res_def['model'] == model) & (res_def['kernel'] == kernel)]
+        main_subset = res_main[(res_main['model'] == model) & (res_main['kernel'] == kernel)]
+        def_vals, main_vals = paired_by_seed(def_subset, main_subset, 'final_epsilon')
         _, p_val = ttest_rel(def_vals, main_vals)
         print(f"tests for model={model}, kernel={kernel}")
         print(f"eps: p={p_val:.3g}")
-        def_vals = res_def[(res_def['model'] == model) & (res_def['kernel'] == kernel)]['loss']
-        main_vals = res_main[(res_main['model'] == model) & (res_main['kernel'] == kernel)]['loss']
+        def_vals, main_vals = paired_by_seed(def_subset, main_subset, 'loss')
         _, p_val = ttest_rel(def_vals, main_vals)
         print(f"loss: p={p_val:.3g}\n")
 
 # Plots
-long_res1 = res_def.melt(
-    id_vars=["model", "kernel"],
-    value_vars=["final_epsilon"],
-    var_name="metric",
-    value_name="value",
-)
-long_res1['defensive'] = True
+import numpy as np
+from analysis_utils import set_log_ticks, bottom_legend, TEXT_WIDTH, use_paper_style
 
-long_res2 = res_main.melt(
-    id_vars=["model", "kernel"],
-    value_vars=["final_epsilon"],
-    var_name="metric",
-    value_name="value",
-)
-long_res2['defensive'] = False
+use_paper_style()
 
-long_res = pd.concat([long_res1, long_res2], ignore_index=True)
-
+defensive_order = [False, True]
+defensive_names_plot = ['none', '0.1']
+defensive_colours = dict(zip(defensive_order, sns.color_palette('deep', n_colors=len(defensive_order))))
+defensive_markers = dict(zip(defensive_order, ['o', 'X']))
+kernel_order = ['naive', '1_hit', 'ind_1_hit', 'r_hit_er', 'multi_r_hit_er']
+kernel_names_plot = ['ABC-MH', '1-hit', 'ind 1-hit', 'single r-hit ER', 'multi r-hit ER']
 model_names_data = ['quadratic', 'MG1_quantile', 'slcp', 'seir', 'gaussian_mixture']
 model_names_plot = ['quadratic', 'MG1', 'SLCP', 'SEIR', 'GM']
 
-plt.rcParams.update({'font.size': 10})
+plot_res = pd.concat(
+    [res_def.assign(defensive=True), res_main.assign(defensive=False)], ignore_index=True
+)
+# A fixed kernel order, so x positions don't depend on row order
+plot_res['kernel'] = pd.Categorical(plot_res['kernel'], categories=kernel_order)
+
+# Fixed seed for seaborn's strip plot jitter, so reruns give the same plot
+np.random.seed(1)
 
 fig, axes = plt.subplots(
-    2, 5, figsize=(20, 8), sharex=True, sharey=False
+    2, 5, figsize=(TEXT_WIDTH, 4.0), sharex=True, sharey=False
 )
 
-for i, model in enumerate(model_names_data):
-    data = long_res[long_res['model'] == model]
-    sns.scatterplot(
-        data=data, x="kernel", y="value", hue="defensive", style="defensive", palette="deep", alpha=0.5,  ax=axes[0, i]
-    )
-    axes[0, i].set_title(model_names_plot[i])
-    axes[0, i].set_xlabel('')
-    if i == 0:
-        axes[0, i].set_ylabel('Epsilon')
-    else:
-        axes[0, i].set_ylabel('')
-    if i < 4:
-        axes[0, i].legend_.remove()
+for row, (column, label) in enumerate([('final_epsilon', r'$\epsilon$'), ('loss', 'Loss')]):
+    for i, model in enumerate(model_names_data):
+        ax = axes[row, i]
+        # One strip plot per setting so each gets its own marker.
+        # Passing the full hue_order dodges each setting to its own side of the kernel
+        for defensive in defensive_order:
+            data = plot_res[(plot_res['model'] == model) & (plot_res['defensive'] == defensive)]
+            sns.stripplot(
+                data=data, x="kernel", y=column, hue="defensive", hue_order=defensive_order,
+                palette=defensive_colours, marker=defensive_markers[defensive], dodge=True, jitter=0.1,
+                alpha=0.8, size=3.5, legend=False, ax=ax
+            )
+        # seaborn's dodge gap can't be set, so pull points towards their kernel's x position,
+        # narrowing both the gap between settings and the jitter
+        for points in ax.collections:
+            x, y = points.get_offsets().T
+            centre = np.round(x)
+            points.set_offsets(np.column_stack([centre + 0.5 * (x - centre), y]))
+        ax.set_xlabel('')
+        ax.set_ylabel(label if i == 0 else '')
+        if column == 'final_epsilon':
+            ax.set_yscale('log')
+            set_log_ticks(ax)
+            ax.set_title(model_names_plot[i])
+            ax.tick_params(axis='x', bottom=False, labelbottom=False)
+        ax.grid(alpha=0.3)
 
-long_res1 = res_def.melt(
-    id_vars=["model", "kernel"],
-    value_vars=["loss"],
-    var_name="metric",
-    value_name="value",
-)
-long_res1['defensive'] = True
+axes[1, 0].set_xticks(range(len(kernel_order)), kernel_names_plot)
+for ax in axes[1]:
+    ax.tick_params(axis='x', labelrotation=45)
+    plt.setp(ax.get_xticklabels(), ha='right', rotation_mode='anchor')
 
-long_res2 = res_main.melt(
-    id_vars=["model", "kernel"],
-    value_vars=["loss"],
-    var_name="metric",
-    value_name="value",
-)
-long_res2['defensive'] = False
-
-long_res = pd.concat([long_res1, long_res2], ignore_index=True)
-
-for i, model in enumerate(model_names_data):
-    data = long_res[long_res['model'] == model]
-    sns.scatterplot(
-        data=data, x="kernel", y="value", hue="defensive", style="defensive", palette="deep", alpha=0.5,  ax=axes[1, i]
-    )
-    axes[1, i].set_title('')
-    if i == 0:
-        axes[1, i].set_ylabel('Loss')
-    else:
-        axes[1, i].set_ylabel('')
-    axes[1, i].legend_.remove()
-
-fig.tight_layout()
-fig.savefig('defensive_grid_plot.pdf')
+# A single legend for all panels
+legend_handles = [
+    plt.Line2D([], [], marker=defensive_markers[d], linestyle='', color=defensive_colours[d], label=name)
+    for d, name in zip(defensive_order, defensive_names_plot)
+]
+bottom_legend(fig, legend_handles, title='Defensive proportion')
+# No creation date, so an unchanged plot gives an identical file
+fig.savefig('defensive_grid_plot.pdf', metadata={'CreationDate': None})

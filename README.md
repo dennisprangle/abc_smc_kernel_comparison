@@ -1,12 +1,64 @@
-This is code for the paper "A Comparison of Kernels for ABC-SMC" by Dennis Prangle, Cecilia Viscardi and Sammy Ragy.
-A link to the preprint will be added once it's available!
+# Transport ABC
 
-The `*example.py` files run individual experiments on different models.
+Code for "A Comparison of Kernels for ABC-SMC" by Dennis Prangle, Cecilia Viscardi and Sammy Ragy (https://arxiv.org/abs/2511.06351). To reproduce the analysis, run the scripts in the Experiments section below.
 
-The `script*.sh` files run the main analyses in the paper, by calling the `*example.py` files repeatedly.
+## Setup
 
-The results are stored in the `results` directory, together with `analysis*.py` files which analyse the results.
+    pip install -r requirements.txt
 
-The main ABC-SMC code is in the `algorithms` directory. The `models` directory has code needed by some of the simulator models. The `ref_samples` directory contains reference samples from the posteriors or good approximation to them, as well as the code to produce these.
+Note `requirements.txt` pins the full environment used for the paper's experiments (Linux with CUDA 13 builds of PyTorch), including all indirect dependencies. On other platforms, installing the directly imported packages (torch, nflows, numpy, scipy, pandas, matplotlib, seaborn, statsmodels, POT, graspologic, wrapt_timeout_decorator) should be enough.
+Recreating the reference samples would additionally need the `pystan` and `particles` python packages.
 
-The `requirements.txt` file shows the package versions used for the paper's results.
+Running the experiment scripts also needs [GNU parallel](https://www.gnu.org/software/parallel/).
+
+
+## Code
+
+### `algorithms/`
+* `abc_smc.py`: classic ABC SMC
+* `transport_abc.py`: ABC SMC with a normalising flow proposal
+* `transport_abc_mixture.py`: ABC SMC with a Gaussian mixture proposal
+* `proposals.py`: ABC-SMC proposal distributions
+* `mcmc.py`: ABC-MCMC kernels
+* `nflowsutils.py`: extensions, variations and fixes for `nflows` code
+* `utils.py`: general utilities (Wasserstein distance, saving run summaries, ...)
+
+### `models/`
+* `MG1.py`: M/G/1 queueing model
+* `epimodels.py`: SEIR epidemic model
+
+### `ref_samples/`
+Reference posterior samples (`*_ref_sample.txt`), used to compute the loss, and the scripts that made them.
+
+### Examples
+Each of these runs one model:
+* `quadratic_example.py`: a toy quadratic model
+* `gaussian_mixture_example.py`: a Gaussian mixture model
+* `MG1_example.py`: the M/G/1 queueing model
+* `slcp_example.py`: SLCP (simple likelihood, complex posterior)
+* `SEIR_example.py`: the SEIR epidemic model
+
+They all accept the same main options, including `--proposal {classic_ind,classic_rw,mix,flow}`, `--kernel`, `--seed`, `--max_mins`, `--n_particles` and `--erp`. Run `python <example> --help` to see them all.
+Each run appends a summary to `results/results.csv`, or with `--results_dir`, writes it to its own file in that directory.
+
+### Other python code
+* `quadratic_illustration.py`: illustration plots of the proposals (saved in `plots/`)
+* `combine_results.py`: utility for experiment scripts below
+
+## Experiments and analysis
+
+Each `script*.sh` runs its jobs in parallel (`NJOBS=8`; logs go to `logs/`) and then combines the results.
+Outputs and analysis scripts are in `results/`. Run the analysis scripts from inside that folder.
+
+| Script | Experiment | Output | Analysis |
+|---|---|---|---|
+| `script.sh` | main comparison of proposals and kernels | `results.csv` | `analysis_main.py`, `analysis_training.py` |
+| `script_defensive.sh` | defensive mixture proportion | `defensive.csv` | `analysis_defensive.py` |
+| `script_hits.sh` | number of hits for the r-hit kernels | `hits.csv` | `analysis_hits.py` |
+| `script_exploratory.sh` | quadratic model histories | `exploratory.csv`, `histories_quadratic/` | `analysis_exploratory.py` |
+| `script_components.sh` | number of mixture components | `components.csv` | `analysis_components.py` |
+| `script_flow.sh` | flow architecture | `flow.csv` | `analysis_flow.py` |
+| `script_fallback.sh` | fallback to the classic proposal | `fallback.csv` | `analysis_fallback.py` |
+| `script_target.sh` | training on the current or previous target | `target.csv` | `analysis_target.py` |
+| `script_tuning.sh` | number of particles and erp (MG1) | `tuning_mg1.csv` | `analysis_tuning.py` |
+| `script_test.sh` | quick check of the parallel setup | `test.csv` | — |

@@ -8,9 +8,28 @@ from algorithms.transport_abc import TransportABC
 from algorithms.proposals import ClassicInd, MixtureProposal
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-# Set slightly larger global default font size for tick labels
-mpl.rcParams['xtick.labelsize'] = 16
-mpl.rcParams['ytick.labelsize'] = 16
+# Panels are drawn at the size they appear in the paper (0.19 of the text width, about 1.4in),
+# so these are the sizes printed on the page. Tick text matches the analysis plots
+PANEL_SIZE = 1.4  # inches
+mpl.rcParams['xtick.labelsize'] = 6
+mpl.rcParams['ytick.labelsize'] = 6
+mpl.rcParams['axes.linewidth'] = 0.6
+
+def new_panel(name):
+    """Start a small square figure with the shared axis limits, ticks and faint grid"""
+    fig = plt.figure(name, figsize=(PANEL_SIZE, PANEL_SIZE))
+    ax = fig.gca()
+    ax.set_xlim(-3, 3)
+    ax.set_ylim(-3, 3)
+    ax.set_xticks([-2, 0, 2])
+    ax.set_yticks([-2, 0, 2])
+    ax.grid(alpha=0.3)
+    return fig
+
+def save_panel(fig, filename):
+    fig.tight_layout(pad=0.3)
+    # No creation date, so an unchanged plot gives an identical file
+    fig.savefig(filename, metadata={'CreationDate': None})
 
 np.random.seed(1)
 torch.manual_seed(1)
@@ -70,38 +89,28 @@ samp_classic = np.vstack(samp_classic)
 abc_flow.training_iteration() # A proposal flow is learned as a side effect
 samp_flow = abc_flow.flow_proposal.flow.sample(1000).detach().numpy()
 
-plt.figure('Mixture proposals')
-plt.xlim(-3, 3)
-plt.ylim(-3, 3)
+fig = new_panel('Mixture proposals')
 for i in range(mix_sources.max()+1):
     filter = (mix_sources==i)
     x = samp_mix[filter]
-    plt.plot(x[:,0], x[:,1], "o", alpha=0.3)
-plt.savefig('plots/illustration_prop_mix.pdf')
+    plt.plot(x[:,0], x[:,1], "o", markersize=2, alpha=0.3)
+save_panel(fig, 'plots/illustration_prop_mix.pdf')
 
-plt.figure('Flow proposals')
-plt.xlim(-3, 3)
-plt.ylim(-3, 3)
-plt.plot(samp_flow[:,0], samp_flow[:,1], "o", alpha=0.3)
-plt.savefig('plots/illustration_prop_flow.pdf')
+fig = new_panel('Flow proposals')
+plt.plot(samp_flow[:,0], samp_flow[:,1], "o", markersize=2, alpha=0.3)
+save_panel(fig, 'plots/illustration_prop_flow.pdf')
 
-plt.figure('Classic proposals')
-plt.xlim(-3, 3)
-plt.ylim(-3, 3)
-plt.plot(samp_classic[:,0], samp_classic[:,1], "o", alpha=0.3)
-plt.savefig('plots/illustration_prop_classic.pdf')
+fig = new_panel('Classic proposals')
+plt.plot(samp_classic[:,0], samp_classic[:,1], "o", markersize=2, alpha=0.3)
+save_panel(fig, 'plots/illustration_prop_classic.pdf')
 
-plt.figure('ABC samples')
-plt.xlim(-3, 3)
-plt.ylim(-3, 3)
-plt.plot(samp_abc[:,0], samp_abc[:,1], "ok", alpha=1.)
-plt.savefig('plots/illustration_abc_samples.pdf')
+fig = new_panel('ABC samples')
+plt.plot(samp_abc[:,0], samp_abc[:,1], "ok", markersize=2.5, alpha=1.)
+save_panel(fig, 'plots/illustration_abc_samples.pdf')
 
-plt.figure('MCMC samples')
-plt.xlim(-3, 3)
-plt.ylim(-3, 3)
-plt.plot(mcmc_samp[:,0], mcmc_samp[:,1], ".b", alpha=1.)
-plt.savefig('plots/illustration_mcmc_samples.pdf')
+fig = new_panel('MCMC samples')
+plt.plot(mcmc_samp[:,0], mcmc_samp[:,1], ".b", markersize=4, alpha=1.)
+save_panel(fig, 'plots/illustration_mcmc_samples.pdf')
 
 plt.gcf().canvas.draw()
 plt.gcf().canvas.flush_events()

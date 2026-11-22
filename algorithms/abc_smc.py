@@ -1,4 +1,5 @@
 import numpy as np
+from contextlib import contextmanager
 from copy import deepcopy
 from time import time
 from pandas import DataFrame
@@ -49,7 +50,7 @@ class ABC_SMC:
     ):
         """Parts of initialisation shared between this class and subclasses"""
         self.start_time = time()
-        self.elapsed_time = 0.
+        self.training_time = 0.
         self.simulator = simulator
         self.n_inputs = n_inputs
         self.observations = observations
@@ -80,6 +81,34 @@ class ABC_SMC:
             self._history = DataFrame(self.history_list)
             self._history_cached = True
         return self._history
+
+    @property
+    def elapsed_time(self):
+        """Seconds since the algorithm started"""
+        return time() - self.start_time
+
+    @contextmanager
+    def clock_paused(self):
+        """Context manager: time spent inside it doesn't count towards `elapsed_time`"""
+        pause_start_time = time()
+        try:
+            yield
+        finally:
+            self.start_time += time() - pause_start_time
+
+    @contextmanager
+    def training_timer(self):
+        """Context manager: time spent inside it counts towards `training_time`"""
+        timer_start_time = time()
+        try:
+            yield
+        finally:
+            self.training_time += time() - timer_start_time
+
+    @property
+    def training_proportion(self):
+        """Proportion of `elapsed_time` spent training proposals"""
+        return self.training_time / self.elapsed_time
 
     @torch.no_grad()
     def init_particles(self, nparticles):
@@ -150,18 +179,19 @@ class ABC_SMC:
         print(f'New epsilon is {self.epsilon:.2e}')
         p.reweight(self.epsilon)
         old_total_sims = self.total_sims
-        if self.proposal == 'classic_ind':
-            self.classic_proposal = ClassicInd(
-                self.particles['train'],
-                use_weights = (self.train_target == 'current')
-            )
-        elif self.proposal == 'classic_rw':
-            self.classic_proposal = ClassicRW(
-                self.particles['train'],
-                use_weights = (self.train_target == 'current')
-            )
-        else:
-            raise NotImplementedError('Proposal not implemented')
+        with self.training_timer():
+            if self.proposal == 'classic_ind':
+                self.classic_proposal = ClassicInd(
+                    self.particles['train'],
+                    use_weights = (self.train_target == 'current')
+                )
+            elif self.proposal == 'classic_rw':
+                self.classic_proposal = ClassicRW(
+                    self.particles['train'],
+                    use_weights = (self.train_target == 'current')
+                )
+            else:
+                raise NotImplementedError('Proposal not implemented')
         p.resample(method='systematic', u=u) # Resample
         self.kernel.epsilon = self.epsilon
         self.kernel.proposal = self.classic_proposal
@@ -173,17 +203,18 @@ class ABC_SMC:
             )
         mcmc_updates, acc_count = self.make_mcmc_moves() # Updates self.particles
         self.iteration += 1
-        self.elapsed_time = time() - self.start_time
+        elapsed_time = self.elapsed_time
         new_history = {
             'iteration': self.iteration,
             'epsilon': self.epsilon,
-            'time': self.elapsed_time,
+            'time': elapsed_time,
+            'training_proportion': self.training_time / elapsed_time,
             'unique_count_train': p.unique_count(),
             'mcmc_acceptances': acc_count
         }
         self.history_list.append(new_history)
         self._history_cached = False
-        print(f'End of iteration, elapsed time (mins) {self.elapsed_time/60.:.1f}')
+        print(f'End of iteration, elapsed time (mins) {elapsed_time/60.:.1f}')
         print(f'Sims this iteration {self.total_sims - old_total_sims:d}')
         print(f'MCMC acceptances {acc_count:d} / {mcmc_updates:d}')
 

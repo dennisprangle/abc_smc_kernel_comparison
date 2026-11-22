@@ -26,37 +26,40 @@ tex_table = loss_table.to_latex(float_format="%.3g")
 print(tex_table)
 
 # Swarm plots
-plt.rcParams.update({'font.size': 10})
+from analysis_utils import bottom_legend, TEXT_WIDTH, use_paper_style
+use_paper_style()
 
 flow_order = ['spline', 'spline_two_layers', 'coupling']
+flow_names_plot = ['spline', 'spline (two layers)', 'coupling']
+flow_colours = dict(zip(flow_order, sns.color_palette(n_colors=len(flow_order))))
 model_names_data = ['quadratic', 'MG1_quantile', 'slcp', 'seir', 'gaussian_mixture']
 model_names_plot = ['quadratic', 'MG1', 'SLCP', 'SEIR', 'GM']
 
 fig, axes = plt.subplots(
-    2, len(model_names_data), figsize=(len(model_names_data)*4, 8), sharex=True, sharey=False
+    2, len(model_names_data), figsize=(TEXT_WIDTH, 3.6), sharex=True, sharey=False
 )
 
 for i, model in enumerate(model_names_data):
     data = res[res['model'] == model]
     # Epsilon plot (top row)
     sns.swarmplot(
-        data=data, x='flow', y='final_epsilon', order=flow_order, dodge=True, ax=axes[0, i]
+        data=data, x='flow', y='final_epsilon', order=flow_order, hue='flow', palette=flow_colours, legend=False, size=3.5, ax=axes[0, i]
     )
     axes[0, i].set_title(model_names_plot[i])
     axes[0, i].set_xlabel('')
     if i == 0:
-        axes[0, i].set_ylabel('Epsilon')
+        axes[0, i].set_ylabel(r'$\epsilon$')
     else:
         axes[0, i].set_ylabel('')
-    axes[0, i].set_xticklabels([])
-    axes[0, i].set_yscale('log')
+    axes[0, i].tick_params(axis='x', bottom=False)
 
 
     # Loss plot (bottom row)
     sns.swarmplot(
-        data=data, x='flow', y='loss', order=flow_order, dodge=True, ax=axes[1, i]
+        data=data, x='flow', y='loss', order=flow_order, hue='flow', palette=flow_colours, legend=False, size=3.5, ax=axes[1, i]
     )
-    axes[1, i].set_xlabel('Flow')
+    axes[1, i].set_xlabel('')
+    axes[1, i].tick_params(axis='x', bottom=False, labelbottom=False)
     if i == 0:
         axes[1, i].set_ylabel('Loss')
     else:
@@ -64,8 +67,16 @@ for i, model in enumerate(model_names_data):
 
     axes[1, i].set_title('')
 
-fig.tight_layout()
-fig.savefig('flow_grid_plot.pdf')
+    for ax in axes[:, i]:
+        ax.grid(alpha=0.3)
+
+# Flows are identified by a single legend rather than x-axis labels
+legend_handles = [
+    plt.Line2D([], [], marker='o', linestyle='', color=flow_colours[flow], label=name)
+    for flow, name in zip(flow_order, flow_names_plot)
+]
+bottom_legend(fig, legend_handles)
+fig.savefig('flow_grid_plot.pdf', metadata={'CreationDate': None})
 
 # ANOVA
 import statsmodels.api as sm

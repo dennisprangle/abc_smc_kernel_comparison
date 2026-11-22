@@ -1,12 +1,12 @@
 import torch
 import numpy as np
-from algorithms.utils import wdist
+from algorithms.utils import wdist, save_summary
 from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
-from os.path import exists
 import argparse
 from wrapt_timeout_decorator import timeout
+from algorithms.mcmc import KERNEL_NAMES
 
 args_parser = argparse.ArgumentParser(description='List options for the experiment')
 args_parser.add_argument('--name', default='gaussian_mixture', help='Name of the experiment')
@@ -14,17 +14,19 @@ args_parser.add_argument('--proposal', default='classic_ind', choices=['classic_
 args_parser.add_argument('--mix_components', default=[5], type=int, nargs='+', help='Number of components in mixture proposal (use 2 arguments to search over a range)')
 args_parser.add_argument('--max_mins', default=60., type=float, help='Stop ABC after exceeding this runtime')
 args_parser.add_argument('--erp', default=0.5, type=float, help='Epsilon reduction parameter (target fraction of unique alive particles)')
+args_parser.add_argument('--n_particles', default=1000, type=int, help='Number of particles (with fallback enabled, 90%% are used for training and 10%% for testing)')
 args_parser.add_argument('--seed', type=int, help='Random seed')
 args_parser.add_argument('--obs', default=0., type=float, help='Observed data')
 args_parser.add_argument('--show_plots', action='store_true', help='Show plots during algorithm')
 args_parser.add_argument('--save_plots', action='store_true', help='Save samples plots after algorithm')
 args_parser.add_argument('--save_history', action='store_true', help='Save history from algorithm')
 args_parser.add_argument('--disable_fallback', action='store_true', help='Disable fallback to classic proposal')
-args_parser.add_argument('--kernel', default='ind_1_hit', choices=['naive', '1_hit', 'ind_1_hit', 'r_hit', 'multi_r_hit'], help='MCMC kernel')
+args_parser.add_argument('--kernel', default='ind_1_hit', choices=KERNEL_NAMES, help='MCMC kernel')
 args_parser.add_argument('--hits', default=2, type=int, help='Number of hits required in kernel')
 args_parser.add_argument('--flow', default='spline', choices=['spline', 'spline_two_layers', 'coupling'], help='Flow type for flow proposal')
 args_parser.add_argument('--target_prev', action='store_true', help='Train proposal on previous target distribution')
 args_parser.add_argument('--defensive_proportion', default=0., type=float, help='Defensive proposal proportion')
+args_parser.add_argument('--results_dir', help='Save summary to a new file in this directory (for parallel runs) instead of appending to results/results.csv')
 
 args = args_parser.parse_args()
 
@@ -46,6 +48,10 @@ else:
     raise ValueError('Invalid number of mixture components')
 
 train_target = 'previous' if args.target_prev else 'current'
+
+# Split of particles into training and test sets when fallback is enabled (900/100 by default)
+n_test = args.n_particles // 10
+n_train = args.n_particles - n_test
 
 @torch.no_grad()
 def gaussian_mixture(theta):
@@ -71,7 +77,7 @@ prior = torch.distributions.Uniform(-10, 10, validate_args=False)
 if args.proposal == 'classic_ind' or args.proposal == 'classic_rw':
     from algorithms.abc_smc import ABC_SMC
     abc = ABC_SMC(
-        N=1000,
+        N=args.n_particles,
         simulator= gaussian_mixture,
         n_inputs = 1,
         observations=args.obs,
@@ -86,8 +92,8 @@ if args.proposal == 'classic_ind' or args.proposal == 'classic_rw':
 elif args.proposal == 'flow':
     from algorithms.transport_abc import TransportABC
     abc = TransportABC(
-        N_train = 900,
-        N_test = 100,
+        N_train = n_train,
+        N_test = n_test,
         simulator = gaussian_mixture,
         n_inputs = 1,
         observations=args.obs,
@@ -103,10 +109,10 @@ elif args.proposal == 'flow':
     abc.pretrain()
 elif args.proposal == 'mix':
     from algorithms.transport_abc_mixture import TransportABCMix
-    N_train = 900
-    N_test = 100
+    N_train = n_train
+    N_test = n_test
     if args.disable_fallback:
-        N_train = 1000
+        N_train = args.n_particles
         N_test = 0
     abc = TransportABCMix(
         N_train = N_train,
@@ -132,6 +138,8 @@ while True:
     abc_samp = abc.particles['train'].values.detach().numpy()
     try:
         max_time = 60.*args.max_mins - abc.elapsed_time
+        if max_time <= 0:
+            break
         train = timeout(max_time)(abc.training_iteration)
         train()
     except (TimeoutError):
@@ -152,6 +160,8 @@ while True:
         plt.gcf().canvas.draw()
         plt.gcf().canvas.flush_events()
         plt.pause(0.1)
+
+training_proportion = abc.training_proportion
 
 if args.save_plots:
     plt.figure('Samples')
@@ -185,14 +195,18 @@ summary = {
     'max_mixture_components': max_mixture_components,
     'fallback': not args.disable_fallback,
     'train_target': train_target,
+    'hits': args.hits,
+    'defensive_proportion': args.defensive_proportion,
+    'n_particles': args.n_particles,
+    'erp': args.erp,
+    'seed': args.seed,
     'final_epsilon': eps_final,
     'epsilon_at_half_time': eps_half,
-    'loss': wloss
+    'loss': wloss,
+    'training_proportion': training_proportion
 }
-df = pd.DataFrame.from_dict([summary]) # See https://stackoverflow.com/a/63972829
 Path('results').mkdir(exist_ok=True)
-output_path='results/results.csv'
-df.to_csv(output_path, mode='a', header=not exists(output_path))
+save_summary(summary, args.results_dir)
 
 if args.save_history:
     df = pd.DataFrame.from_dict(abc.history)

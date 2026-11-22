@@ -74,13 +74,14 @@ class TransportABCMix(ABC_SMC):
         print(f'New epsilon is {self.epsilon:.2e}')
         for p in self.particles.values():
             p.reweight(self.epsilon)
-        self.mixture_proposal = MixtureProposal(
-            self.particles['train'],
-            min_components=self.min_mixture_components,
-            max_components=self.max_mixture_components,
-            safe_label_init=self.self_label_init,
-            use_weights = (self.train_target == 'current')
-        )
+        with self.training_timer():
+            self.mixture_proposal = MixtureProposal(
+                self.particles['train'],
+                min_components=self.min_mixture_components,
+                max_components=self.max_mixture_components,
+                safe_label_init=self.self_label_init,
+                use_weights = (self.train_target == 'current')
+            )
         self.kernel.proposal = self.mixture_proposal
         if self.defensive_proportion > 0:
             self.kernel.proposal = DefensiveProposal(
@@ -90,20 +91,21 @@ class TransportABCMix(ABC_SMC):
             )
         self.kernel.epsilon = self.epsilon
         if self.enable_fallback:
-            mixture_test_loss = self.loss(
-                self.mixture_proposal,
-                self.particles['test'].values,
-                self.particles['test'].weights
-            ).item()
-            self.classic_proposal = ClassicInd(
-                self.particles['train'],
-                use_weights = (self.train_target == 'current')
-            )
-            classic_test_loss = self.loss(
-                self.classic_proposal,
-                self.particles['test'].values,
-                self.particles['test'].weights,
-            )
+            with self.training_timer():
+                mixture_test_loss = self.loss(
+                    self.mixture_proposal,
+                    self.particles['test'].values,
+                    self.particles['test'].weights
+                ).item()
+                self.classic_proposal = ClassicInd(
+                    self.particles['train'],
+                    use_weights = (self.train_target == 'current')
+                )
+                classic_test_loss = self.loss(
+                    self.classic_proposal,
+                    self.particles['test'].values,
+                    self.particles['test'].weights,
+                )
             if mixture_test_loss > classic_test_loss:
                 print('Falling back to classic ABC proposal!')
                 self.nr_fallback +=1
@@ -114,17 +116,18 @@ class TransportABCMix(ABC_SMC):
             p.resample(method='systematic', u=u) # Resample
         mcmc_updates, acc_count = self.make_mcmc_moves() # Updates self.particles
         self.iteration += 1
-        self.elapsed_time = time() - self.start_time
+        elapsed_time = self.elapsed_time
         new_history = {
             'iteration': self.iteration,
             'epsilon': self.epsilon,
-            'time': self.elapsed_time,
+            'time': elapsed_time,
+            'training_proportion': self.training_time / elapsed_time,
             'unique_count_train': self.particles['train'].unique_count(),
             'mcmc_acceptances': acc_count,
             'nr fallbacks': self.nr_fallback
         }
         self.history_list.append(new_history)
         self._history_cached = False
-        print(f'End of iteration, elapsed time (mins) {self.elapsed_time/60.:.1f}')
+        print(f'End of iteration, elapsed time (mins) {elapsed_time/60.:.1f}')
         print(f'Sims this iteration {self.total_sims - old_total_sims:d}')
         print(f'MCMC acceptances {acc_count:d} / {mcmc_updates:d}')

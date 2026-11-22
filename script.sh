@@ -1,81 +1,46 @@
 #!/bin/bash
-rm results/results.csv
+# Runs the jobs below in parallel using GNU parallel.
+# The job list, job log and each job's stdout/stderr are saved in $LOGDIR.
+# Each run saves its summary to its own file in $RUNDIR, and these are combined at the end.
+NJOBS=8
+LOGDIR=logs/main
+RUNDIR=results/runs/main
+# One thread per process, so parallel jobs don't compete for cores
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 
+rm -rf $RUNDIR
+mkdir -p $LOGDIR $RUNDIR
+
+# Standard arguments for each proposal
+proposal_args() {
+	case $1 in
+		mix) echo " --disable_fallback --mix_components 5" ;;
+		flow) echo " --disable_fallback" ;;
+	esac
+}
+
+# Print one command per line
+make_jobs() {
 for seed in {1..5}
 do
-	python quadratic_example.py --proposal mix --seed $seed --kernel naive --disable_fallback --mix_components 5
-	python quadratic_example.py --proposal mix --seed $seed --kernel 1_hit --disable_fallback --mix_components 5
-	python quadratic_example.py --proposal mix --seed $seed --kernel ind_1_hit --disable_fallback --mix_components 5
-	python quadratic_example.py --proposal mix --seed $seed --kernel multi_r_hit --disable_fallback --mix_components 5
-	python quadratic_example.py --proposal flow --seed $seed --kernel naive --disable_fallback
-	python quadratic_example.py --proposal flow --seed $seed --kernel 1_hit --disable_fallback
-	python quadratic_example.py --proposal flow --seed $seed --kernel ind_1_hit --disable_fallback
-	python quadratic_example.py --proposal flow --seed $seed --kernel multi_r_hit --disable_fallback
-	python quadratic_example.py --proposal classic_ind --seed $seed --kernel naive
-	python quadratic_example.py --proposal classic_ind --seed $seed --kernel 1_hit
-	python quadratic_example.py --proposal classic_ind --seed $seed --kernel ind_1_hit
-	python quadratic_example.py --proposal classic_ind --seed $seed --kernel multi_r_hit
-	python quadratic_example.py --proposal classic_rw --seed $seed --kernel naive
-	python quadratic_example.py --proposal classic_rw --seed $seed --kernel 1_hit
-	python quadratic_example.py --proposal classic_rw --seed $seed --kernel multi_r_hit
-	python MG1_example.py --proposal mix --seed $seed --kernel naive --quantile_summaries --disable_fallback --mix_components 5
-	python MG1_example.py --proposal mix --seed $seed --kernel 1_hit --quantile_summaries --disable_fallback --mix_components 5
-	python MG1_example.py --proposal mix --seed $seed --kernel ind_1_hit --quantile_summaries --disable_fallback --mix_components 5
-	python MG1_example.py --proposal mix --seed $seed --kernel multi_r_hit --quantile_summaries --disable_fallback --mix_components 5
-	python MG1_example.py --proposal flow --seed $seed --kernel naive --quantile_summaries --disable_fallback
-	python MG1_example.py --proposal flow --seed $seed --kernel 1_hit --quantile_summaries --disable_fallback
-	python MG1_example.py --proposal flow --seed $seed --kernel ind_1_hit --quantile_summaries --disable_fallback
-	python MG1_example.py --proposal flow --seed $seed --kernel multi_r_hit --quantile_summaries --disable_fallback
-	python MG1_example.py --proposal classic_ind --seed $seed --kernel naive --quantile_summaries
-	python MG1_example.py --proposal classic_ind --seed $seed --kernel 1_hit --quantile_summaries
-	python MG1_example.py --proposal classic_ind --seed $seed --kernel ind_1_hit --quantile_summaries
-	python MG1_example.py --proposal classic_ind --seed $seed --kernel multi_r_hit --quantile_summaries
-	python MG1_example.py --proposal classic_rw --seed $seed --kernel naive --quantile_summaries
-	python MG1_example.py --proposal classic_rw --seed $seed --kernel 1_hit --quantile_summaries
-	python MG1_example.py --proposal classic_rw --seed $seed --kernel multi_r_hit --quantile_summaries
-	python slcp_example.py --proposal mix --seed $seed --kernel naive --disable_fallback --mix_components 5
-	python slcp_example.py --proposal mix --seed $seed --kernel 1_hit --disable_fallback --mix_components 5
-	python slcp_example.py --proposal mix --seed $seed --kernel ind_1_hit --disable_fallback --mix_components 5
-	python slcp_example.py --proposal mix --seed $seed --kernel multi_r_hit --disable_fallback --mix_components 5
-	python slcp_example.py --proposal flow --seed $seed --kernel naive --disable_fallback
-	python slcp_example.py --proposal flow --seed $seed --kernel 1_hit --disable_fallback
-	python slcp_example.py --proposal flow --seed $seed --kernel ind_1_hit --disable_fallback
-	python slcp_example.py --proposal flow --seed $seed --kernel multi_r_hit --disable_fallback
-	python slcp_example.py --proposal classic_ind --seed $seed --kernel naive
-	python slcp_example.py --proposal classic_ind --seed $seed --kernel 1_hit
-	python slcp_example.py --proposal classic_ind --seed $seed --kernel ind_1_hit
-	python slcp_example.py --proposal classic_ind --seed $seed --kernel multi_r_hit
-	python slcp_example.py --proposal classic_rw --seed $seed --kernel naive
-	python slcp_example.py --proposal classic_rw --seed $seed --kernel 1_hit
-	python slcp_example.py --proposal classic_rw --seed $seed --kernel multi_r_hit
-	python SEIR_example.py --proposal mix --seed $seed --kernel naive --disable_fallback --mix_components 5
-	python SEIR_example.py --proposal mix --seed $seed --kernel 1_hit --disable_fallback --mix_components 5
-	python SEIR_example.py --proposal mix --seed $seed --kernel ind_1_hit --disable_fallback --mix_components 5
-	python SEIR_example.py --proposal mix --seed $seed --kernel multi_r_hit --disable_fallback --mix_components 5
-	python SEIR_example.py --proposal flow --seed $seed --kernel naive --disable_fallback
-	python SEIR_example.py --proposal flow --seed $seed --kernel 1_hit --disable_fallback
-	python SEIR_example.py --proposal flow --seed $seed --kernel ind_1_hit --disable_fallback
-	python SEIR_example.py --proposal flow --seed $seed --kernel multi_r_hit --disable_fallback
-	python SEIR_example.py --proposal classic_ind --seed $seed --kernel naive
-	python SEIR_example.py --proposal classic_ind --seed $seed --kernel 1_hit
-	python SEIR_example.py --proposal classic_ind --seed $seed --kernel ind_1_hit
-	python SEIR_example.py --proposal classic_ind --seed $seed --kernel multi_r_hit
-	python SEIR_example.py --proposal classic_rw --seed $seed --kernel naive
-	python SEIR_example.py --proposal classic_rw --seed $seed --kernel 1_hit
-	python SEIR_example.py --proposal classic_rw --seed $seed --kernel multi_r_hit
-	python gaussian_mixture_example.py --proposal mix --seed $seed --kernel naive --disable_fallback --mix_components 5
-	python gaussian_mixture_example.py --proposal mix --seed $seed --kernel 1_hit --disable_fallback --mix_components 5
-	python gaussian_mixture_example.py --proposal mix --seed $seed --kernel ind_1_hit --disable_fallback --mix_components 5
-	python gaussian_mixture_example.py --proposal mix --seed $seed --kernel multi_r_hit --disable_fallback --mix_components 5
-	python gaussian_mixture_example.py --proposal flow --seed $seed --kernel naive --disable_fallback
-	python gaussian_mixture_example.py --proposal flow --seed $seed --kernel 1_hit --disable_fallback
-	python gaussian_mixture_example.py --proposal flow --seed $seed --kernel ind_1_hit --disable_fallback
-	python gaussian_mixture_example.py --proposal flow --seed $seed --kernel multi_r_hit --disable_fallback
-	python gaussian_mixture_example.py --proposal classic_ind --seed $seed --kernel naive
-	python gaussian_mixture_example.py --proposal classic_ind --seed $seed --kernel 1_hit
-	python gaussian_mixture_example.py --proposal classic_ind --seed $seed --kernel ind_1_hit
-	python gaussian_mixture_example.py --proposal classic_ind --seed $seed --kernel multi_r_hit
-	python gaussian_mixture_example.py --proposal classic_rw --seed $seed --kernel naive
-	python gaussian_mixture_example.py --proposal classic_rw --seed $seed --kernel 1_hit
-	python gaussian_mixture_example.py --proposal classic_rw --seed $seed --kernel multi_r_hit
+	for proposal in mix flow classic_ind classic_rw
+	do
+		for kernel in naive 1_hit ind_1_hit r_hit_er multi_r_hit_er
+		do
+			# classic_rw isn't run with the independence kernel
+			[ $proposal = classic_rw ] && [ $kernel = ind_1_hit ] && continue
+			args="--proposal $proposal --seed $seed --kernel $kernel$(proposal_args $proposal) --results_dir $RUNDIR"
+			echo "python quadratic_example.py $args"
+			echo "python MG1_example.py $args --quantile_summaries"
+			echo "python slcp_example.py $args"
+			echo "python SEIR_example.py $args"
+			echo "python gaussian_mixture_example.py $args"
+		done
+	done
 done
+}
+
+make_jobs > $LOGDIR/jobs.txt
+parallel -j $NJOBS --joblog $LOGDIR/joblog.txt --results "$LOGDIR/{#}/" < $LOGDIR/jobs.txt
+
+python combine_results.py $RUNDIR results/results.csv
